@@ -1,5 +1,12 @@
 import { useState } from "react";
 
+import { auth, db } from "./firebase";
+import { createUserWithEmailAndPassword } from "firebase/auth";
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { sendEmailVerification } from "firebase/auth";
+import { setDoc, doc } from "firebase/firestore";
+
 export default function App() {
   const [page, setPage] = useState("login");
 
@@ -20,13 +27,26 @@ function Login({ setPage }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  const login = () => {
-    if (email && password) {
-      alert("Login Successful 🚀");
-    } else {
-      alert("Please enter email and password");
-    }
-  };
+  const login = async () => {
+  if (!email || !password) {
+    alert("Please enter email and password");
+    return;
+  }
+
+  try {
+    const userCredential = await signInWithEmailAndPassword(
+      auth,
+      email,
+      password
+    );
+
+    console.log(userCredential.user);
+
+    alert("Login Successful 🚀");
+  } catch (error) {
+    alert(error.message);
+  }
+};
 
   return (
     <div className="form-card">
@@ -90,14 +110,48 @@ function Register({ setPage }) {
 /* ================= VOLUNTEER FORM ================= */
 function VolunteerForm() {
   const [hasExperience, setHasExperience] = useState(false);
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  const registerVolunteer = async () => {
+  try {
+    const userCredential = await createUserWithEmailAndPassword(
+      auth,
+      email,
+      password
+    );
+
+    alert("Registered Successfully ✅");
+
+  } catch (error) {
+    console.error(error);
+    alert(error.message);
+  }
+};
 
   return (
     <div className="form-card">
       <h2 className="title">Volunteer Registration</h2>
 
       <div className="section">
-        <input className="field" placeholder="Full Name" />
-        <input className="field" placeholder="Age" />
+        <input 
+            className="field" 
+            placeholder="Full Name" 
+            onChange={(e)=>setName(e.target.value)} 
+          />
+        <input 
+            className="field" 
+            placeholder="Email" 
+            onChange={(e)=>setEmail(e.target.value)} 
+          />
+
+          <input 
+            className="field" 
+            type="password" 
+            placeholder="Password" 
+            onChange={(e)=>setPassword(e.target.value)} 
+           />
 
         <select className="field">
           <option>Select Gender</option>
@@ -131,7 +185,9 @@ function VolunteerForm() {
         )}
       </div>
 
-      <button className="btn">Submit</button>
+      <button className="btn" onClick={registerVolunteer}>
+       Submit
+      </button>
     </div>
   );
 }
@@ -139,14 +195,52 @@ function VolunteerForm() {
 /* ================= NGO FORM ================= */
 function NGOForm() {
   const [licensed, setLicensed] = useState(false);
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [ngoName, setNgoName] = useState("");
+
+  const registerNGO = async () => {
+  if (!email || !password || !ngoName) {
+    alert("Fill all required fields");
+    return;
+  }
+
+  try {
+    // ✅ Create account (same as volunteer)
+    const userCredential = await createUserWithEmailAndPassword(
+      auth,
+      email,
+      password
+    );
+
+    const user = userCredential.user;
+
+    // ✅ Save NGO data in Firestore
+    await setDoc(doc(db, "ngos", user.uid), {
+      name,
+      email,
+      ngoName,
+      role: "ngo"
+    });
+
+    alert("NGO Registered Successfully ✅");
+
+  } catch (error) {
+    alert(error.message);
+  }
+};
 
   return (
     <div className="form-card">
       <h2 className="title">NGO Registration</h2>
 
       <div className="section">
-        <input className="field" placeholder="Full Name" />
+        <input className="field" placeholder="Full Name" onChange={(e)=>setName(e.target.value)} />
+        <input className="field" placeholder="Email" onChange={(e)=>setEmail(e.target.value)} />
+        <input className="field" type="password" placeholder="Password" onChange={(e)=>setPassword(e.target.value)} />
         <input className="field" placeholder="Age" />
+        <input className="field" placeholder="Phone Number" />
 
         <select className="field">
           <option>Select Gender</option>
@@ -155,18 +249,17 @@ function NGOForm() {
           <option>Other</option>
         </select>
 
-        <input className="field" placeholder="Email" />
-        <input className="field" placeholder="Phone Number" />
+        
+        
       </div>
 
       <div className="section">
-        <input className="field" placeholder="NGO Name" />
+        <input className="field" placeholder="NGO Name" onChange={(e)=>setNgoName(e.target.value)} />
         <input className="field" placeholder="Position at NGO" />
 
         {/* ✅ FIXED: INPUT (NOT DROPDOWN) */}
         <input className="field" placeholder="Type of NGO" />
 
-        <input className="field" placeholder="NGO Email" />
         <input className="field" placeholder="NGO Phone Number" />
         <input className="field" placeholder="NGO Address" />
       </div>
@@ -192,7 +285,9 @@ function NGOForm() {
         )}
       </div>
 
-      <button className="btn">Submit</button>
+      <button className="btn" onClick={registerNGO}>
+         Submit
+      </button>
     </div>
   );
 }
