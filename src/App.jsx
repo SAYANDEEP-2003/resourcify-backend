@@ -160,7 +160,6 @@ function VolunteerForm() {
           <option>Other</option>
         </select>
 
-        <input className="field" placeholder="Email" />
         <input className="field" placeholder="Phone Number" />
         <input className="field" placeholder="Address" />
       </div>
