@@ -1,11 +1,15 @@
 import { useState } from "react";
 
 import { auth, db } from "./firebase";
-import { createUserWithEmailAndPassword } from "firebase/auth";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { sendEmailVerification } from "firebase/auth";
-import { setDoc, doc } from "firebase/firestore";
+import NGODashboard from "./pages/ngo_dashboard";
+
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  sendEmailVerification
+} from "firebase/auth";
+
+import { setDoc, doc, getDoc } from "firebase/firestore";
 
 export default function App() {
   const [page, setPage] = useState("login");
@@ -17,6 +21,9 @@ export default function App() {
       {page === "register" && <Register setPage={setPage} />}
       {page === "volunteer" && <VolunteerForm />}
       {page === "ngo" && <NGOForm />}
+      {page === "ngo-dashboard" && <NGODashboard />}
+      {page === "volunteer-dashboard" && <h1>Volunteer Dashboard Coming Soon</h1>}
+      
 
     </div>
   );
@@ -26,56 +33,96 @@ export default function App() {
 function Login({ setPage }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  
 
   const login = async () => {
-  if (!email || !password) {
-    alert("Please enter email and password");
-    return;
-  }
+    if (!email || !password) {
+      alert("Enter email & password");
+      return;
+    }
 
-  try {
-    const userCredential = await signInWithEmailAndPassword(
-      auth,
-      email,
-      password
-    );
+    try {
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
 
-    console.log(userCredential.user);
+      const user = userCredential.user;
 
-    alert("Login Successful 🚀");
-  } catch (error) {
-    alert(error.message);
-  }
-};
+      // 🔥 Fetch user role from Firestore
+      const userDoc = await getDoc(doc(db, "users", user.uid));
+
+      if (!userDoc.exists()) {
+        alert("User data not found");
+        return;
+      }
+
+      const userData = userDoc.data();
+
+      // ❗ Check email verification
+      await user.reload(); // 🔥 IMPORTANT
+
+      if (!user.emailVerified) {
+        alert("Please verify your email first 📩");
+        return;
+      }
+
+      // 🚀 Auto redirect (NO OK BUTTON)
+      setTimeout(() => {
+        if (userData.role === "ngo") {
+          setPage("ngo-dashboard");
+        } else {
+          setPage("volunteer-dashboard");
+        }
+      }, 1000);
+
+    } catch (error) {
+      // 🔥 Proper error handling
+      if (error.code === "auth/user-not-found") {
+        alert("No account found. Redirecting to register...");
+        setTimeout(() => setPage("register"), 1500);
+      } else if (error.code === "auth/wrong-password") {
+        alert("Incorrect password. Try again.");
+      } else if (error.code === "auth/invalid-email") {
+        alert("Invalid email format.");
+      } else {
+        alert(error.message);
+      }
+    }
+  };
 
   return (
-    <div className="form-card">
-      <h1 className="title">Login</h1>
+  <div className="form-card">
+    <h1 className="title">Login</h1>
+  
 
-      <input
-        className="field"
-        placeholder="Email"
-        onChange={(e) => setEmail(e.target.value)}
-      />
+  <input
+    className="field"
+    placeholder="Email"
+    onChange={(e) => setEmail(e.target.value)}
+  />
 
-      <input
-        className="field"
-        type="password"
-        placeholder="Password"
-        onChange={(e) => setPassword(e.target.value)}
-      />
+  <input
+    className="field"
+    type="password"
+    placeholder="Password"
+    onChange={(e) => setPassword(e.target.value)}
+  />
 
-      <button className="btn" onClick={login}>Login</button>
+  <button className="btn" onClick={login}>
+    Login
+  </button>
 
-      <p
-        className="text-center mt-4 text-green-300 cursor-pointer"
-        onClick={() => setPage("register")}
-      >
-        Don't have an account? Register
-      </p>
-    </div>
-  );
-}
+  <p
+    className="text-center mt-4 text-green-300 cursor-pointer"
+    onClick={() => setPage("register")}
+  >
+    Don't have an account? Register
+  </p>
+ </div>
+  ); 
+} 
 
 /* ================= REGISTER ================= */
 function Register({ setPage }) {
@@ -113,8 +160,32 @@ function VolunteerForm() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [phone, setPhone] = useState("");
+  
+  
 
-  const registerVolunteer = async () => {
+  const resendVerification = async () => {
+  try {
+   let user = auth.currentUser;
+
+// 🔥 Fix token expired issue
+if (user) {
+  try {
+    await user.reload();
+  } catch (error) {
+    // force re-login silently
+    const credential = await signInWithEmailAndPassword(auth, email, password);
+    user = credential.user;
+  }
+} 
+
+    // 🔥 If user not created yet → create temporary account
+    if (!user) {
+  if (!email || !password) {
+    alert("Enter email & password first");
+    return;
+  }
+
   try {
     const userCredential = await createUserWithEmailAndPassword(
       auth,
@@ -122,10 +193,65 @@ function VolunteerForm() {
       password
     );
 
-    alert("Registered Successfully ✅");
+    user = userCredential.user;
+
+    await setDoc(doc(db, "users", user.uid), {
+      name,
+      email,
+      role: "volunteer",
+      isEmailVerified: false
+    });
 
   } catch (error) {
-    console.error(error);
+    if (error.code === "auth/email-already-in-use") {
+      alert("Email already registered. Please login.");
+      return;
+    } else {
+      throw error;
+    }
+  }
+}
+
+    // ✅ Send verification email
+
+// now send email
+     await sendEmailVerification(user);
+     await user.reload();
+
+     alert("Verification email sent 📩. Please click the link in your email before continuing.");
+
+  } catch (error) {
+    alert(error.message);
+  }
+};
+
+  const registerVolunteer = async () => {
+  try {
+    const user = auth.currentUser;
+
+    if (!user) {
+  alert("Please click Verify Email first");
+  return;
+}
+
+await user.reload();
+
+if (!user.emailVerified) {
+  alert("Please verify your email before submitting 📩");
+  return;
+}
+
+    await setDoc(doc(db, "users", user.uid), {
+      name,
+      email,
+      phone: phone.trim(),
+      role: "volunteer",
+      isEmailVerified: user.emailVerified,
+    }, { merge: true });
+
+    alert("Registration completed ✅");
+
+  } catch (error) {
     alert(error.message);
   }
 };
@@ -145,13 +271,19 @@ function VolunteerForm() {
             placeholder="Email" 
             onChange={(e)=>setEmail(e.target.value)} 
           />
-
-          <input 
+        
+        <input 
             className="field" 
             type="password" 
             placeholder="Password" 
             onChange={(e)=>setPassword(e.target.value)} 
            />
+
+          <button className="btn mt-2" onClick={resendVerification}>
+  Verify Email
+</button>
+
+          
 
         <select className="field">
           <option>Select Gender</option>
@@ -160,7 +292,23 @@ function VolunteerForm() {
           <option>Other</option>
         </select>
 
-        <input className="field" placeholder="Phone Number" />
+      <input
+  className="field"
+  placeholder="Phone (+91...)"
+  value={phone || ""}
+  onChange={(e) => {
+  let value = e.target.value;
+
+  // remove everything except digits
+  value = value.replace(/[^0-9]/g, "");
+
+  setPhone(value);
+}}
+/>  
+
+
+
+
         <input className="field" placeholder="Address" />
       </div>
 
@@ -216,12 +364,14 @@ function NGOForm() {
     const user = userCredential.user;
 
     // ✅ Save NGO data in Firestore
-    await setDoc(doc(db, "ngos", user.uid), {
-      name,
-      email,
-      ngoName,
-      role: "ngo"
-    });
+    // ✅ ALSO SAVE IN USERS COLLECTION (IMPORTANT)
+await setDoc(doc(db, "users", user.uid), {
+  name,
+  email,
+  ngoName,
+  role: "ngo",
+  isEmailVerified: false
+});
 
     alert("NGO Registered Successfully ✅");
 
