@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import { auth, db } from "./firebase";
 import NGODashboard from "./pages/ngo_dashboard";
-
+import VolunteerDashboard from "./pages/volunteer_dashboard";
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -22,7 +22,7 @@ export default function App() {
       {page === "volunteer" && <VolunteerForm />}
       {page === "ngo" && <NGOForm />}
       {page === "ngo-dashboard" && <NGODashboard />}
-      {page === "volunteer-dashboard" && <h1>Volunteer Dashboard Coming Soon</h1>}
+      {page === "volunteer-dashboard" && <VolunteerDashboard />}
       
 
     </div>
@@ -305,13 +305,8 @@ if (!user.emailVerified) {
   setPhone(value);
 }}
 />  
-
-
-
-
-        <input className="field" placeholder="Address" />
-      </div>
-
+ <input className="field" placeholder="Address" />
+    </div>
       <div className="section">
         <p className="label">Have you previously done volunteer work?</p>
 
@@ -347,39 +342,81 @@ function NGOForm() {
   const [password, setPassword] = useState("");
   const [ngoName, setNgoName] = useState("");
 
-  const registerNGO = async () => {
-  if (!email || !password || !ngoName) {
-    alert("Fill all required fields");
-    return;
-  }
-
+  const resendVerification = async () => {
   try {
-    // ✅ Create account (same as volunteer)
-    const userCredential = await createUserWithEmailAndPassword(
-      auth,
-      email,
-      password
-    );
+    let user = auth.currentUser;
 
-    const user = userCredential.user;
+    if (user) {
+      try {
+        await user.reload();
+      } catch {
+        const credential = await signInWithEmailAndPassword(auth, email, password);
+        user = credential.user;
+      }
+    }
 
-    // ✅ Save NGO data in Firestore
-    // ✅ ALSO SAVE IN USERS COLLECTION (IMPORTANT)
-await setDoc(doc(db, "users", user.uid), {
-  name,
-  email,
-  ngoName,
-  role: "ngo",
-  isEmailVerified: false
-});
+    if (!user) {
+      if (!email || !password) {
+        alert("Enter email & password first");
+        return;
+      }
 
-    alert("NGO Registered Successfully ✅");
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
+
+      user = userCredential.user;
+
+      await setDoc(doc(db, "users", user.uid), {
+        name,
+        email,
+        ngoName,
+        role: "ngo",
+        isEmailVerified: false
+      });
+    }
+
+    await sendEmailVerification(user);
+    await user.reload();
+
+    alert("Verification email sent 📩");
 
   } catch (error) {
     alert(error.message);
   }
 };
+const registerNGO = async () => {
+  const user = auth.currentUser;
 
+  if (!user) {
+    alert("Please click Verify Email first");
+    return;
+  }
+
+  await user.reload();
+
+  if (!user.emailVerified) {
+    alert("Please verify your email before submitting 📩");
+    return;
+  }
+
+  try {
+    await setDoc(doc(db, "users", user.uid), {
+      name,
+      email,
+      ngoName,
+      role: "ngo",
+      isEmailVerified: user.emailVerified
+    }, { merge: true });
+
+    alert("NGO Registration completed ✅");
+
+  } catch (error) {
+    alert(error.message);
+  }
+};
   return (
     <div className="form-card">
       <h2 className="title">NGO Registration</h2>
@@ -388,6 +425,9 @@ await setDoc(doc(db, "users", user.uid), {
         <input className="field" placeholder="Full Name" onChange={(e)=>setName(e.target.value)} />
         <input className="field" placeholder="Email" onChange={(e)=>setEmail(e.target.value)} />
         <input className="field" type="password" placeholder="Password" onChange={(e)=>setPassword(e.target.value)} />
+        <button className="btn mt-2" onClick={resendVerification}>
+          Verify Email
+         </button>
         <input className="field" placeholder="Age" />
         <input className="field" placeholder="Phone Number" />
 
